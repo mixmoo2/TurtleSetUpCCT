@@ -1,7 +1,4 @@
 -- installer.lua
--- Run this on your CC:Tweaked turtle to download and set up your system from GitHub:
--- pastebin get <code/url> installer.lua && installer
-
 local repoUser = "mixmoo2"
 local repoName = "TurtleSetUpCCT"
 local branch = "main"
@@ -14,7 +11,6 @@ local function downloadFile(fileName)
         print("[!] Failed to download: " .. fileName)
         return false
     end
-    
     local content = response.readAll()
     response.close()
     
@@ -26,11 +22,7 @@ local function downloadFile(fileName)
 end
 
 print("=== TURTLE SETUP INSTALLER ===")
-print("Downloading core helper library...")
-if not downloadFile("lib_turtle.lua") then
-    print("[!] Aborting setup due to download error.")
-    return
-end
+if not downloadFile("lib_turtle.lua") then return end
 
 print("\nSelect Tool Type for this Turtle:")
 print("1. Pickaxe (Mining / Quarry / Netherite)")
@@ -45,17 +37,11 @@ if choice == "1" then targetScript = "pickaxe.lua"
 elseif choice == "2" then targetScript = "axe.lua"
 elseif choice == "3" then targetScript = "hoe.lua"
 elseif choice == "4" then targetScript = "sword.lua"
-else
-    print("[!] Invalid choice. Defaulting to pickaxe.")
-    targetScript = "pickaxe.lua"
+else targetScript = "pickaxe.lua"
 end
 
 if downloadFile(targetScript) then
-    print("\n[+] Setup complete! Setting " .. targetScript .. " as startup.lua...")
-    if fs.exists("startup.lua") then
-        fs.delete("startup.lua")
-    end
-    -- Copy or rename target script to startup so it runs automatically on boot
+    if fs.exists("startup.lua") then fs.delete("startup.lua") end
     local file = fs.open(targetScript, "r")
     local code = file.readAll()
     file.close()
