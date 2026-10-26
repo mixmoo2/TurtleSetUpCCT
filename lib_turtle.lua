@@ -1,4 +1,4 @@
--- lib_turtle.lua: Persistent state, grid tracking, and safe inventory dumping
+-- lib_turtle.lua: Persistent state, grid tracking, safe dumping, and chest protection
 local lib = {}
 local memoryPath = "turtle_memory.lua"
 
@@ -25,7 +25,7 @@ function lib.loadMemory()
         end
     end
     
-    -- Fresh setup
+    -- Fresh setup & chest mapping
     term.clear()
     term.setCursorPos(1, 1)
     print("=== FIRST TIME SETUP & MAPPING ===")
@@ -65,15 +65,31 @@ function lib.getPosition()
     return nil, nil, nil
 end
 
+-- Prevent mining or interacting with home base or chest coordinates
+function lib.isChestLocation(x, y, z, mem)
+    if not mem.homeX then return false end
+    -- Check if target is the exact home block or directly adjacent chest slots
+    if math.abs(x - mem.homeX) <= 1 and math.abs(y - mem.homeY) <= 1 and math.abs(z - mem.homeZ) <= 1 then
+        return true
+    end
+    return false
+end
+
 local function getFacing()
     local x1, _, z1 = lib.getPosition()
     if not x1 then return nil end
+    
+    -- Try moving forward to check orientation, but ensure we don't hit a wall/chest blindly
     if not turtle.forward() then
-        turtle.dig()
+        if not lib.isChestLocation(x1, _, z1) then
+            turtle.dig()
+        end
         if not turtle.forward() then return nil end
     end
+    
     local x2, _, z2 = lib.getPosition()
     turtle.back()
+    
     if not x2 then return nil end
     local dx, dz = x2 - x1, z2 - z1
     if dx > 0 then return "+X"
@@ -86,9 +102,11 @@ end
 
 function lib.faceHeading(targetHeading)
     local current = getFacing()
-    while current ~= targetHeading do
+    local attempts = 0
+    while current ~= targetHeading and attempts < 4 do
         turtle.turnRight()
         current = getFacing()
+        attempts = attempts + 1
         if not current then break end
     end
 end
@@ -112,16 +130,28 @@ function lib.goTo(targetX, targetY, targetZ, mem)
         
         if math.abs(y - targetY) > 0.1 then
             if y < targetY then
-                if not turtle.up() then turtle.digUp(); turtle.up() end
+                if not turtle.up() then 
+                    if not lib.isChestLocation(x, y+1, z, mem) then turtle.digUp() end
+                    turtle.up() 
+                end
             else
-                if not turtle.down() then turtle.digDown(); turtle.down() end
+                if not turtle.down() then 
+                    if not lib.isChestLocation(x, y-1, z, mem) then turtle.digDown() end
+                    turtle.down() 
+                end
             end
         elseif math.abs(x - targetX) > 0.1 then
             if x < targetX then lib.faceHeading("+X") else lib.faceHeading("-X") end
-            if not turtle.forward() then turtle.dig(); turtle.attack(); turtle.forward() end
+            if not turtle.forward() then 
+                if not lib.isChestLocation(x, y, z, mem) then turtle.dig(); turtle.attack() end
+                turtle.forward() 
+            end
         elseif math.abs(z - targetZ) > 0.1 then
             if z < targetZ then lib.faceHeading("+Z") else lib.faceHeading("-Z") end
-            if not turtle.forward() then turtle.dig(); turtle.attack(); turtle.forward() end
+            if not turtle.forward() then 
+                if not lib.isChestLocation(x, y, z, mem) then turtle.dig(); turtle.attack() end
+                turtle.forward() 
+            end
         end
         
         ::continue::
@@ -137,7 +167,7 @@ function lib.dumpAndRefuel(mem)
     print("[*] Returning to chests for fuel/inventory dump...")
     lib.goTo(mem.homeX, mem.homeY, mem.homeZ, mem)
     
-    -- Dump inventory ONLY from slots 3 to 16 (preserving slot 1 for fuel and slot 2 for building blocks)
+    -- Dump inventory ONLY from slots 3 to 16 (preserving slot 1 fuel and slot 2 building blocks)
     for slot = 3, 16 do
         turtle.select(slot)
         if turtle.getItemCount(slot) > 0 then
