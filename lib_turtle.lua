@@ -1,4 +1,4 @@
--- lib_turtle.lua: Persistent state, grid tracking, and systematic pathfinding
+-- lib_turtle.lua: Persistent state, grid tracking, and safe inventory dumping
 local lib = {}
 local memoryPath = "turtle_memory.lua"
 
@@ -48,7 +48,6 @@ end
 
 function lib.saveMemory(mem)
     local file = fs.open(memoryPath, "w")
-    -- Serialize table state safely
     file.write("return { " ..
         string.format("initialized = %s, fuelDir = %q, outputDir = %q, homeX = %s, homeY = %s, homeZ = %s, currentX = %s, currentY = %s, currentZ = %s, mode = %q",
             tostring(mem.initialized), tostring(mem.fuelDir), tostring(mem.outputDir),
@@ -94,7 +93,6 @@ function lib.faceHeading(targetHeading)
     end
 end
 
--- Absolute waypoint pathfinding that updates current coordinates in memory
 function lib.goTo(targetX, targetY, targetZ, mem)
     print(string.format("[*] Moving to X:%.0f Y:%.0f Z:%.0f", targetX, targetY, targetZ))
     
@@ -139,10 +137,10 @@ function lib.dumpAndRefuel(mem)
     print("[*] Returning to chests for fuel/inventory dump...")
     lib.goTo(mem.homeX, mem.homeY, mem.homeZ, mem)
     
-    -- Dump inventory (preserving slot 1 fuel)
-    for slot = 1, 16 do
+    -- Dump inventory ONLY from slots 3 to 16 (preserving slot 1 for fuel and slot 2 for building blocks)
+    for slot = 3, 16 do
         turtle.select(slot)
-        if slot > 1 or turtle.getItemCount(slot) > 0 then
+        if turtle.getItemCount(slot) > 0 then
             if mem.outputDir == "front" then turtle.drop()
             elseif mem.outputDir == "back" then turtle.drop()
             elseif mem.outputDir == "top" then turtle.dropUp()
@@ -151,7 +149,7 @@ function lib.dumpAndRefuel(mem)
         end
     end
     
-    -- Refuel
+    -- Refuel from slot 1
     turtle.select(1)
     if mem.fuelDir == "front" then turtle.suck()
     elseif mem.fuelDir == "back" then turtle.suck()
