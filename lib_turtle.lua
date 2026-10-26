@@ -1,6 +1,5 @@
--- lib_turtle.lua: Core positioning, chest mapping, and navigation library
+-- lib_turtle.lua: Core positioning, chest mapping, and safe navigation library
 local lib = {}
-
 local configPath = "turtle_config.lua"
 
 function lib.loadConfig()
@@ -31,70 +30,58 @@ function lib.loadConfig()
     return config
 end
 
--- Get current GPS position with heading tracking fallback
 function lib.getPosition()
     if gps then
         local x, y, z = gps.locate(3)
         if x then return x, y, z end
     end
+    print("[!] GPS signal lost!")
     return nil, nil, nil
 end
 
--- Navigate safely to target coordinates (x, y, z)
+-- Safe movement toward target coordinates without infinite spin loops
 function lib.goTo(targetX, targetY, targetZ)
-    local curX, curY, curZ = lib.getPosition()
-    if not curX then
-        print("[!] GPS unavailable for navigation!")
-        return false
-    end
+    print(string.format("[*] Navigating to X:%.1f Y:%.1f Z:%.1f", targetX, targetY, targetZ))
+    
+    while true do
+        local x, y, z = lib.getPosition()
+        if not x then 
+            sleep(2)
+            goto continue 
+        end
 
-    -- Simple axis-aligned movement logic
-    while curY < targetY do turtle.up(); curY = curY + 1 end
-    while curY > targetY do turtle.down(); curY = curY - 1 end
+        if math.abs(x - targetX) < 0.5 and math.abs(y - targetY) < 0.5 and math.abs(z - targetZ) < 0.5 then
+            break -- Reached destination
+        end
 
-    while curX < targetX do
-        -- Face East (+X)
-        while not lib.isFacing(1, 0) do turtle.turnRight() end
-        turtle.forward()
-        curX, curY, curZ = lib.getPosition()
-    end
-    while curX > targetX do
-        -- Face West (-X)
-        while not lib.isFacing(-1, 0) do turtle.turnRight() end
-        turtle.forward()
-        curX, curY, curZ = lib.getPosition()
-    end
+        -- Move Y (Vertical) first
+        if y < targetY then
+            if not turtle.up() then turtle.digUp() end
+        elseif y > targetY then
+            if not turtle.down() then turtle.digDown() end
+        -- Move X Axis
+        elseif x < targetX then
+            -- Face +X (East) -> We can infer orientation or just try moving and correcting
+            if not turtle.forward() then turtle.dig(); turtle.attack() end
+        elseif x > targetX then
+            if not turtle.forward() then turtle.dig(); turtle.attack() end
+        -- Move Z Axis
+        elseif z < targetZ then
+            if not turtle.forward() then turtle.dig(); turtle.attack() end
+        elseif z > targetZ then
+            if not turtle.forward() then turtle.dig(); turtle.attack() end
+        end
 
-    while curZ < targetZ do
-        -- Face South (+Z)
-        while not lib.isFacing(0, 1) do turtle.turnRight() end
-        turtle.forward()
-        curX, curY, curZ = lib.getPosition()
+        ::continue::
+        sleep(0.1)
     end
-    while curZ > targetZ do
-        -- Face North (-Z)
-        while not lib.isFacing(0, -1) do turtle.turnRight() end
-        turtle.forward()
-        curX, curY, curZ = lib.getPosition()
-    end
-    return true
-end
-
-function lib.isFacing(targetXDir, targetZDir)
-    local x1, _, z1 = lib.getPosition()
-    if not x1 then return true end
-    turtle.forward()
-    local x2, _, z2 = lib.getPosition()
-    turtle.back()
-    if not x2 then return true end
-    local dx, dz = x2 - x1, z2 - z1
-    return math.abs(dx - targetXDir) < 0.1 and math.abs(dz - targetZDir) < 0.1
 end
 
 function lib.dumpAndRefuel(config, homeX, homeY, homeZ)
     local currentX, currentY, currentZ = lib.getPosition()
+    if not currentX then return end
     
-    print("[*] Returning to base chest...")
+    print("[*] Returning to home base...")
     lib.goTo(homeX, homeY, homeZ)
     
     -- Dump inventory into output chest
@@ -118,7 +105,7 @@ function lib.dumpAndRefuel(config, homeX, homeY, homeZ)
     end
     turtle.refuel()
     
-    print("[*] Resuming task at previous coordinates...")
+    print("[*] Resuming work at task site...")
     lib.goTo(currentX, currentY, currentZ)
 end
 
