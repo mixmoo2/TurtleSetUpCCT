@@ -1,11 +1,10 @@
--- pickaxe.lua
 local lib = dofile("lib_turtle.lua")
-local config = lib.loadConfig()
+local mem = lib.loadMemory()
 
 print("Select Pickaxe Mode:")
 print("1. Strip Mine (Coordinate Bounded)")
 print("2. Quarry (Coordinate Bounded)")
-print("3. Netherite / Ancient Debris (Lava Sealing & Edge Protection)")
+print("3. Netherite / Ancient Debris (Lava Sealing)")
 write("Choice (1-3): ")
 local mode = read()
 
@@ -19,35 +18,27 @@ write("X2: ") local x2 = tonumber(read())
 write("Y2: ") local y2 = tonumber(read())
 write("Z2: ") local z2 = tonumber(read())
 
-local homeX, homeY, homeZ = lib.getPosition()
-print(string.format("Home Registered at: X=%.1f, Y=%.1f, Z=%.1f", homeX or 0, homeY or 0, homeZ or 0))
-
-local function checkInventoryAndFuel()
+local function checkStatus()
     if turtle.getFuelLevel() < 150 or turtle.getItemCount(16) > 0 then
-        lib.dumpAndRefuel(config, homeX, homeY, homeZ)
+        lib.dumpAndRefuel(mem)
     end
 end
 
 while true do
-    checkInventoryAndFuel()
-
-    if mode == "1" then
-        lib.goTo(x1, y1, z1)
-        lib.goTo(x2, y2, z2)
-    elseif mode == "2" then
-        lib.goTo(x1, y1, z1)
-        if turtle.detectDown() then turtle.digDown() end
-        lib.goTo(x2, y2, z2)
+    checkStatus()
+    if mode == "1" or mode == "2" then
+        lib.goTo(x1, y1, z1, mem)
+        checkStatus()
+        lib.goTo(x2, y2, z2, mem)
     elseif mode == "3" then
-        -- Netherite mode: fill gaps/edges against lava, then mine
-        checkInventoryAndFuel()
+        checkStatus()
         if turtle.inspect() then turtle.dig() end
         turtle.select(2)
-        if turtle.getItemCount(2) > 0 then
-            if not turtle.detectUp() then turtle.placeUp() end
+        if turtle.getItemCount(2) > 0 and not turtle.detectUp() then
+            turtle.placeUp()
         end
         turtle.select(1)
-        turtle.forward()
+        lib.goTo(x2, y2, z2, mem)
     end
     sleep(0.1)
 end
