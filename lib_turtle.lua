@@ -1,9 +1,9 @@
--- lib_turtle.lua: Persistent memory, mapping, and coordinate pathfinding
+-- lib_turtle.lua: Persistent state, grid tracking, and systematic pathfinding
 local lib = {}
 local memoryPath = "turtle_memory.lua"
 
 function lib.loadMemory()
-    local mem = { initialized = false }
+    local mem = { initialized = false, clearedBlocks = {} }
     if fs.exists(memoryPath) then
         term.clear()
         term.setCursorPos(1, 1)
@@ -19,7 +19,8 @@ function lib.loadMemory()
             file.close()
             local func = load("return " .. data)
             if func then mem = func() end
-            print("Loaded previous memory successfully!")
+            if not mem.clearedBlocks then mem.clearedBlocks = {} end
+            print("Resuming previous task from memory...")
             return mem
         end
     end
@@ -40,17 +41,19 @@ function lib.loadMemory()
     end
     
     mem.initialized = true
+    mem.clearedBlocks = {}
     lib.saveMemory(mem)
     return mem
 end
 
 function lib.saveMemory(mem)
     local file = fs.open(memoryPath, "w")
+    -- Serialize table state safely
     file.write("return { " ..
-        string.format("initialized = %s, fuelDir = %q, outputDir = %q, homeX = %s, homeY = %s, homeZ = %s, targetX = %s, targetY = %s, targetZ = %s",
+        string.format("initialized = %s, fuelDir = %q, outputDir = %q, homeX = %s, homeY = %s, homeZ = %s, currentX = %s, currentY = %s, currentZ = %s, mode = %q",
             tostring(mem.initialized), tostring(mem.fuelDir), tostring(mem.outputDir),
             tostring(mem.homeX), tostring(mem.homeY), tostring(mem.homeZ),
-            tostring(mem.targetX), tostring(mem.targetY), tostring(mem.targetZ)) ..
+            tostring(mem.currentX), tostring(mem.currentY), tostring(mem.currentZ), tostring(mem.mode)) ..
         " }")
     file.close()
 end
@@ -91,14 +94,9 @@ function lib.faceHeading(targetHeading)
     end
 end
 
--- Safe pathfinding that avoids breaking mapped home chests
+-- Absolute waypoint pathfinding that updates current coordinates in memory
 function lib.goTo(targetX, targetY, targetZ, mem)
-    if mem then
-        mem.targetX, mem.targetY, mem.targetZ = targetX, targetY, targetZ
-        lib.saveMemory(mem)
-    end
-
-    print(string.format("[*] Pathfinding to X:%.0f Y:%.0f Z:%.0f", targetX, targetY, targetZ))
+    print(string.format("[*] Moving to X:%.0f Y:%.0f Z:%.0f", targetX, targetY, targetZ))
     
     while true do
         local x, y, z = lib.getPosition()
@@ -108,20 +106,22 @@ function lib.goTo(targetX, targetY, targetZ, mem)
             goto continue
         end
         
-        if math.abs(x - targetX) <= 0.5 and math.abs(y - targetY) <= 0.5 and math.abs(z - targetZ) <= 0.5 then
+        mem.currentX, mem.currentY, mem.currentZ = x, y, z
+        
+        if math.abs(x - targetX) <= 0.1 and math.abs(y - targetY) <= 0.1 and math.abs(z - targetZ) <= 0.1 then
             break
         end
         
-        if math.abs(y - targetY) > 0.5 then
+        if math.abs(y - targetY) > 0.1 then
             if y < targetY then
                 if not turtle.up() then turtle.digUp(); turtle.up() end
             else
                 if not turtle.down() then turtle.digDown(); turtle.down() end
             end
-        elseif math.abs(x - targetX) > 0.5 then
+        elseif math.abs(x - targetX) > 0.1 then
             if x < targetX then lib.faceHeading("+X") else lib.faceHeading("-X") end
             if not turtle.forward() then turtle.dig(); turtle.attack(); turtle.forward() end
-        elseif math.abs(z - targetZ) > 0.5 then
+        elseif math.abs(z - targetZ) > 0.1 then
             if z < targetZ then lib.faceHeading("+Z") else lib.faceHeading("-Z") end
             if not turtle.forward() then turtle.dig(); turtle.attack(); turtle.forward() end
         end
@@ -129,16 +129,17 @@ function lib.goTo(targetX, targetY, targetZ, mem)
         ::continue::
         sleep(0.05)
     end
+    lib.saveMemory(mem)
 end
 
 function lib.dumpAndRefuel(mem)
     local curX, curY, curZ = lib.getPosition()
     if not curX then return end
     
-    print("[*] Low fuel or full inventory. Returning to chest...")
+    print("[*] Returning to chests for fuel/inventory dump...")
     lib.goTo(mem.homeX, mem.homeY, mem.homeZ, mem)
     
-    -- Dump inventory (protect slot 1 if it has fuel)
+    -- Dump inventory (preserving slot 1 fuel)
     for slot = 1, 16 do
         turtle.select(slot)
         if slot > 1 or turtle.getItemCount(slot) > 0 then
@@ -159,9 +160,9 @@ function lib.dumpAndRefuel(mem)
     end
     turtle.refuel()
     
-    print("[*] Resuming task from memory...")
-    if mem.targetX then
-        lib.goTo(mem.targetX, mem.targetY, mem.targetZ, mem)
+    print("[*] Resuming task at last position...")
+    if mem.currentX then
+        lib.goTo(mem.currentX, mem.currentY, mem.currentZ, mem)
     end
 end
 
