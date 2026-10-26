@@ -1,33 +1,58 @@
--- lib_turtle.lua: Coordinate-based navigation and chest management
+-- lib_turtle.lua: Persistent memory, mapping, and coordinate pathfinding
 local lib = {}
-local configPath = "turtle_config.lua"
+local memoryPath = "turtle_memory.lua"
 
-function lib.loadConfig()
-    local config = { initialized = false }
-    if fs.exists(configPath) then
-        local file = fs.open(configPath, "r")
-        local data = file.readAll()
-        file.close()
-        local func = load("return " .. data)
-        if func then config = func() end
-    end
-    
-    if not config.initialized then
+function lib.loadMemory()
+    local mem = { initialized = false }
+    if fs.exists(memoryPath) then
         term.clear()
         term.setCursorPos(1, 1)
-        print("=== FIRST TIME SETUP ===")
-        write("Fuel Chest Direction (front/back/left/right/top/bottom): ")
-        config.fuelDir = read()
-        write("Output Chest Direction (front/back/left/right/top/bottom): ")
-        config.outputDir = read()
-        config.initialized = true
+        print("=== EXISTING MEMORY FOUND ===")
+        print("1. Continue previous task")
+        print("2. Reset / Clear memory and reconfigure")
+        write("Choice (1-2): ")
+        local choice = read()
         
-        local file = fs.open(configPath, "w")
-        file.write(string.format("return { initialized = true, fuelDir = %q, outputDir = %q }", config.fuelDir, config.outputDir))
-        file.close()
-        print("Configuration saved!")
+        if choice == "1" then
+            local file = fs.open(memoryPath, "r")
+            local data = file.readAll()
+            file.close()
+            local func = load("return " .. data)
+            if func then mem = func() end
+            print("Loaded previous memory successfully!")
+            return mem
+        end
     end
-    return config
+    
+    -- Fresh setup
+    term.clear()
+    term.setCursorPos(1, 1)
+    print("=== FIRST TIME SETUP & MAPPING ===")
+    write("Fuel Chest Direction (front/back/left/right/top/bottom): ")
+    mem.fuelDir = read()
+    write("Output Chest Direction (front/back/left/right/top/bottom): ")
+    mem.outputDir = read()
+    
+    if gps then
+        local x, y, z = gps.locate(3)
+        mem.homeX, mem.homeY, mem.homeZ = x, y, z
+        print(string.format("Home base mapped at: X=%.0f Y=%.0f Z=%.0f", x or 0, y or 0, z or 0))
+    end
+    
+    mem.initialized = true
+    lib.saveMemory(mem)
+    return mem
+end
+
+function lib.saveMemory(mem)
+    local file = fs.open(memoryPath, "w")
+    file.write("return { " ..
+        string.format("initialized = %s, fuelDir = %q, outputDir = %q, homeX = %s, homeY = %s, homeZ = %s, targetX = %s, targetY = %s, targetZ = %s",
+            tostring(mem.initialized), tostring(mem.fuelDir), tostring(mem.outputDir),
+            tostring(mem.homeX), tostring(mem.homeY), tostring(mem.homeZ),
+            tostring(mem.targetX), tostring(mem.targetY), tostring(mem.targetZ)) ..
+        " }")
+    file.close()
 end
 
 function lib.getPosition()
@@ -39,22 +64,16 @@ function lib.getPosition()
 end
 
 local function getFacing()
-    local x1, y1, z1 = lib.getPosition()
+    local x1, _, z1 = lib.getPosition()
     if not x1 then return nil end
-    
     if not turtle.forward() then
         turtle.dig()
         if not turtle.forward() then return nil end
     end
-    
-    local x2, y2, z2 = lib.getPosition()
+    local x2, _, z2 = lib.getPosition()
     turtle.back()
-    
     if not x2 then return nil end
-    
-    local dx = x2 - x1
-    local dz = z2 - z1
-    
+    local dx, dz = x2 - x1, z2 - z1
     if dx > 0 then return "+X"
     elseif dx < 0 then return "-X"
     elseif dz > 0 then return "+Z"
@@ -65,21 +84,21 @@ end
 
 function lib.faceHeading(targetHeading)
     local current = getFacing()
-    local headings = {"+Z", "-X", "-Z", "+X"}
-    
     while current ~= targetHeading do
         turtle.turnRight()
         current = getFacing()
-        if not current then 
-            turtle.turnLeft()
-            turtle.turnRight()
-            break 
-        end
+        if not current then break end
     end
 end
 
-function lib.goTo(targetX, targetY, targetZ)
-    print(string.format("[*] Navigating to X:%.0f Y:%.0f Z:%.0f", targetX, targetY, targetZ))
+-- Safe pathfinding that avoids breaking mapped home chests
+function lib.goTo(targetX, targetY, targetZ, mem)
+    if mem then
+        mem.targetX, mem.targetY, mem.targetZ = targetX, targetY, targetZ
+        lib.saveMemory(mem)
+    end
+
+    print(string.format("[*] Pathfinding to X:%.0f Y:%.0f Z:%.0f", targetX, targetY, targetZ))
     
     while true do
         local x, y, z = lib.getPosition()
@@ -112,34 +131,38 @@ function lib.goTo(targetX, targetY, targetZ)
     end
 end
 
-function lib.dumpAndRefuel(config, homeX, homeY, homeZ)
+function lib.dumpAndRefuel(mem)
     local curX, curY, curZ = lib.getPosition()
     if not curX then return end
     
-    print("[*] Returning to chest...")
-    lib.goTo(homeX, homeY, homeZ)
+    print("[*] Low fuel or full inventory. Returning to chest...")
+    lib.goTo(mem.homeX, mem.homeY, mem.homeZ, mem)
     
+    -- Dump inventory (protect slot 1 if it has fuel)
     for slot = 1, 16 do
         turtle.select(slot)
         if slot > 1 or turtle.getItemCount(slot) > 0 then
-            if config.outputDir == "front" then turtle.drop()
-            elseif config.outputDir == "back" then turtle.drop()
-            elseif config.outputDir == "top" then turtle.dropUp()
-            elseif config.outputDir == "bottom" then turtle.dropDown()
+            if mem.outputDir == "front" then turtle.drop()
+            elseif mem.outputDir == "back" then turtle.drop()
+            elseif mem.outputDir == "top" then turtle.dropUp()
+            elseif mem.outputDir == "bottom" then turtle.dropDown()
             end
         end
     end
     
+    -- Refuel
     turtle.select(1)
-    if config.fuelDir == "front" then turtle.suck()
-    elseif config.fuelDir == "back" then turtle.suck()
-    elseif config.fuelDir == "top" then turtle.suckUp()
-    elseif config.fuelDir == "bottom" then turtle.suckDown()
+    if mem.fuelDir == "front" then turtle.suck()
+    elseif mem.fuelDir == "back" then turtle.suck()
+    elseif mem.fuelDir == "top" then turtle.suckUp()
+    elseif mem.fuelDir == "bottom" then turtle.suckDown()
     end
     turtle.refuel()
     
-    print("[*] Returning to work area...")
-    lib.goTo(curX, curY, curZ)
+    print("[*] Resuming task from memory...")
+    if mem.targetX then
+        lib.goTo(mem.targetX, mem.targetY, mem.targetZ, mem)
+    end
 end
 
 return lib
