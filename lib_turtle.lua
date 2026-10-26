@@ -38,7 +38,6 @@ function lib.getPosition()
     return nil, nil, nil
 end
 
--- Get current heading by stepping forward/back safely or tracking delta
 local function getFacing()
     local x1, y1, z1 = lib.getPosition()
     if not x1 then return nil end
@@ -56,27 +55,21 @@ local function getFacing()
     local dx = x2 - x1
     local dz = z2 - z1
     
-    if dx > 0 then return "+X" -- East
-    elseif dx < 0 then return "-X" -- West
-    elseif dz > 0 then return "+Z" -- South
-    elseif dz < 0 then return "-Z" -- North
+    if dx > 0 then return "+X"
+    elseif dx < 0 then return "-X"
+    elseif dz > 0 then return "+Z"
+    elseif dz < 0 then return "-Z"
     end
     return nil
 end
 
 function lib.faceHeading(targetHeading)
     local current = getFacing()
-    local headings = {"+Z", "-X", "-Z", "+X"} -- Clockwise layout relative to standard coordinates
-    
-    local function getIndex(h)
-        for i, v in ipairs(headings) do if v == h then return i end end
-        return 1
-    end
+    local headings = {"+Z", "-X", "-Z", "+X"}
     
     while current ~= targetHeading do
         turtle.turnRight()
         current = getFacing()
-        -- fallback safety turn if getFacing fails momentarily
         if not current then 
             turtle.turnLeft()
             turtle.turnRight()
@@ -85,7 +78,6 @@ function lib.faceHeading(targetHeading)
     end
 end
 
--- Reliable waypoint navigation using GPS coordinates
 function lib.goTo(targetX, targetY, targetZ)
     print(string.format("[*] Navigating to X:%.0f Y:%.0f Z:%.0f", targetX, targetY, targetZ))
     
@@ -97,33 +89,21 @@ function lib.goTo(targetX, targetY, targetZ)
             goto continue
         end
         
-        -- Check if we reached destination (within 0.5 blocks)
         if math.abs(x - targetX) <= 0.5 and math.abs(y - targetY) <= 0.5 and math.abs(z - targetZ) <= 0.5 then
             break
         end
         
-        -- Handle Y (height) alignment first
         if math.abs(y - targetY) > 0.5 then
             if y < targetY then
                 if not turtle.up() then turtle.digUp(); turtle.up() end
             else
                 if not turtle.down() then turtle.digDown(); turtle.down() end
             end
-        -- Handle X axis alignment
         elseif math.abs(x - targetX) > 0.5 then
-            if x < targetX then
-                lib.faceHeading("+X")
-            else
-                lib.faceHeading("-X")
-            end
+            if x < targetX then lib.faceHeading("+X") else lib.faceHeading("-X") end
             if not turtle.forward() then turtle.dig(); turtle.attack(); turtle.forward() end
-        -- Handle Z axis alignment
         elseif math.abs(z - targetZ) > 0.5 then
-            if z < targetZ then
-                lib.faceHeading("+Z")
-            else
-                lib.faceHeading("-Z")
-            end
+            if z < targetZ then lib.faceHeading("+Z") else lib.faceHeading("-Z") end
             if not turtle.forward() then turtle.dig(); turtle.attack(); turtle.forward() end
         end
         
