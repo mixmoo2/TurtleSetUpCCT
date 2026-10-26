@@ -1,6 +1,6 @@
--- hoe.lua
+-- hoe.lua: Bounded farming and harvesting with persistent memory
 local lib = dofile("lib_turtle.lua")
-local config = lib.loadConfig()
+local mem = lib.loadMemory()
 
 print("Enter Farm Zone Corner 1 (Start):")
 write("X1: ") local x1 = tonumber(read())
@@ -12,19 +12,20 @@ write("X2: ") local x2 = tonumber(read())
 write("Y2: ") local y2 = tonumber(read())
 write("Z2: ") local z2 = tonumber(read())
 
-local homeX, homeY, homeZ = lib.getPosition()
-lib.goTo(x1, y1, z1)
+-- Navigate to farm start
+lib.goTo(x1, y1, z1, mem)
 
 while true do
     if turtle.getFuelLevel() < 100 or turtle.getItemCount(16) > 0 then
-        lib.dumpAndRefuel(config, homeX, homeY, homeZ)
-        lib.goTo(x1, y1, z1)
+        lib.dumpAndRefuel(mem)
+        lib.goTo(x1, y1, z1, mem)
     end
 
     turtle.suckDown()
     if turtle.detectDown() then
-        turtle.digDown()
+        turtle.digDown() -- Harvest mature crops
     end
-    lib.goTo(x2, y2, z2)
+    
+    lib.goTo(x2, y2, z2, mem)
     sleep(5)
 end
