@@ -67,27 +67,25 @@ end
 
 -- Prevent mining or interacting with home base or chest coordinates
 function lib.isChestLocation(x, y, z, mem)
-    if not mem.homeX then return false end
-    -- Check if target is the exact home block or directly adjacent chest slots
+    if not mem or not mem.homeX then return false end
     if math.abs(x - mem.homeX) <= 1 and math.abs(y - mem.homeY) <= 1 and math.abs(z - mem.homeZ) <= 1 then
         return true
     end
     return false
 end
 
-local function getFacing()
-    local x1, _, z1 = lib.getPosition()
+local function getFacing(mem)
+    local x1, y1, z1 = lib.getPosition()
     if not x1 then return nil end
     
-    -- Try moving forward to check orientation, but ensure we don't hit a wall/chest blindly
     if not turtle.forward() then
-        if not lib.isChestLocation(x1, _, z1) then
+        if not lib.isChestLocation(x1, y1, z1, mem) then
             turtle.dig()
         end
         if not turtle.forward() then return nil end
     end
     
-    local x2, _, z2 = lib.getPosition()
+    local x2, y2, z2 = lib.getPosition()
     turtle.back()
     
     if not x2 then return nil end
@@ -100,12 +98,12 @@ local function getFacing()
     return nil
 end
 
-function lib.faceHeading(targetHeading)
-    local current = getFacing()
+function lib.faceHeading(targetHeading, mem)
+    local current = getFacing(mem)
     local attempts = 0
     while current ~= targetHeading and attempts < 4 do
         turtle.turnRight()
-        current = getFacing()
+        current = getFacing(mem)
         attempts = attempts + 1
         if not current then break end
     end
@@ -141,13 +139,13 @@ function lib.goTo(targetX, targetY, targetZ, mem)
                 end
             end
         elseif math.abs(x - targetX) > 0.1 then
-            if x < targetX then lib.faceHeading("+X") else lib.faceHeading("-X") end
+            if x < targetX then lib.faceHeading("+X", mem) else lib.faceHeading("-X", mem) end
             if not turtle.forward() then 
                 if not lib.isChestLocation(x, y, z, mem) then turtle.dig(); turtle.attack() end
                 turtle.forward() 
             end
         elseif math.abs(z - targetZ) > 0.1 then
-            if z < targetZ then lib.faceHeading("+Z") else lib.faceHeading("-Z") end
+            if z < targetZ then lib.faceHeading("+Z", mem) else lib.faceHeading("-Z", mem) end
             if not turtle.forward() then 
                 if not lib.isChestLocation(x, y, z, mem) then turtle.dig(); turtle.attack() end
                 turtle.forward() 
