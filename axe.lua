@@ -1,6 +1,6 @@
--- axe.lua
+-- axe.lua: Bounded tree-felling with persistent memory and sapling replanting
 local lib = dofile("lib_turtle.lua")
-local config = lib.loadConfig()
+local mem = lib.loadMemory()
 
 print("Enter Logging Zone Corner 1 (Start):")
 write("X1: ") local x1 = tonumber(read())
@@ -15,13 +15,13 @@ write("Z2: ") local z2 = tonumber(read())
 write("Select Sapling Type (1: Oak/Standard, 2: Spruce/2x2 Grid, 3: Jungle/Special): ")
 local saplingType = read()
 
-local homeX, homeY, homeZ = lib.getPosition()
-lib.goTo(x1, y1, z1)
+-- Navigate to start of zone
+lib.goTo(x1, y1, z1, mem)
 
 while true do
     if turtle.getFuelLevel() < 100 or turtle.getItemCount(16) > 0 then
-        lib.dumpAndRefuel(config, homeX, homeY, homeZ)
-        lib.goTo(x1, y1, z1)
+        lib.dumpAndRefuel(mem)
+        lib.goTo(x1, y1, z1, mem)
     end
 
     if turtle.detect() then
@@ -35,7 +35,8 @@ while true do
             turtle.down()
         end
         
-        turtle.select(2) -- slot 2 holds saplings
+        -- Plant sapling from slot 2
+        turtle.select(2)
         if saplingType == "2" then
             turtle.placeDown()
         else
@@ -44,6 +45,7 @@ while true do
         
         turtle.back()
     else
+        -- Scan forward or move along zone
         turtle.forward()
     end
     sleep(1)
